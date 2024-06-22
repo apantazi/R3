@@ -1,0 +1,359 @@
+---
+title: 'R3: Gathering and cleaning data'
+author: "Andrew Pantazi / IRE"
+date: "2024-06-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,paged.print=FALSE,fig.width = 8)
+```
+
+## Intro
+
+My name is Andrew Pantazi. You can contact me at [Andrew.Pantazi\@jaxtrib.org](mailto:Andrew.Pantazi@jaxtrib.org){.email}.
+
+### What We're Doing
+
+In this hourlong session, we're going to show you two things:
+
+**1. The many ways to get data in RStudio!**
+
+\* *We'll practice loading data from:* a built in R dataset, an R package, a local csv, an Excel file, an html table and a JSON file. If the wifi cooperates, we'll also show how to load from a csv on the web and write to a Google Sheet.
+
+\* *I'll introduce you to resources that will show you how to:* pull data from an API (like the Census), and pull data from a database.
+
+**2. Some data cleaning tricks in R!** \* *We'll practice:* cleaning up column names, correcting erroneous values, converting data types, manipulating strings.
+
+### What You Should Already Know
+
+-   How to operate R and RStudio
+
+-   How to read in a CSV file
+
+-   How to use a pipe function in tidyverse %\>% or \|\>
+
+-   How to use select(), filter(), arrange(), count() and basic ggplot functions to create a chart
+
+These are the basic concepts covered in R1 and R2. If you don't know these concepts, you *should* be able to still learn from our class, but you might have a harder time.
+
+### What You'll Get Out of This
+
+-   You won't leave here an expert.
+-   You will leave here understanding some basic loading and cleaning data concepts in R, a list of helpful packages, and some resources for further learning.
+-   A taste of what's possible when you use R to examine and investigate data.
+
+### Resources to Learn More
+
+Andrew Ba Tran at the Washington Post is a genius, and he puts so many learning-R resources online.
+
+<https://learn.r-journalism.com/>
+
+<https://nicar.r-journalism.com/>
+
+## Let's go
+
+### Load packages
+
+We'll need to load several packages for this class.
+
+They are:
+
+-   The [tidvyerse](https://www.tidyverse.org/) collection of packages. We'll be making extensive use of the readr, dplyr and stringr packages,which all load as part of the tidyverse core.
+
+    -   [readr](https://readr.tidyverse.org/)
+
+    -   [dplyr](https://dplyr.tidyverse.org/)
+
+    -   [stringr](https://stringr.tidyverse.org/)
+
+-   The [rvest](http://rvest.tidyverse.org/) package for web scraping.
+
+-   The [janitor](https://github.com/sfirke/janitor) package for data cleaning.
+
+-   The [readxl](https://readxl.tidyverse.org/) package for loading Excel files.
+
+-   The [googlesheets4](https://googlesheets4.tidyverse.org/) package for reading -- and writing -- data stored in a Google Sheet.
+
+-   The [jsonlite](https://cran.r-project.org/web/packages/jsonlite/index.html) package for reading JSON files.
+
+```{r}
+library(jsonlite)
+library(tidyverse)
+```
+
+#### Loading data from an online flat file
+
+Loading data from a flat file -- like a csv -- stored on your local machine is a very common data loading task. For that, we'll use the `read_csv()` function that's part of the `readr` package that loads with the `tidyverse`.
+
+```{r}
+conventions <- read_csv("https://opendata.arcgis.com/api/v3/datasets/ee68c27ccda34528b10c6e462e4721d3_0/downloads/data?format=csv&spatialRefId=4326&where=1%3D1")
+glimpse(conventions)
+```
+
+Here we were able to load in a CSV file that was on the internet, loaded directly from an open API. This is a dataset of conventions in the city of Anaheim, and the city itself published it on ArcGIS' API.
+
+#### Loading data from an Excel file
+
+Another data format you'll likely see in the wild: Excel files. They're a little trickier than csvs, because they can contain multiple sheets.
+
+We can use the \`read_xlsx()\` function from the \`readxl\` package to load data from Excel files. But, unlike 'read_csv()', we can't use 'read_xlsx()' to directly read an Excel file from the internet, so first we need to download the file and then read it in.
+
+```{r}
+babynames_url <- "https://raw.githubusercontent.com/ireapps/teaching-guide-R123/main/data/babynames_excel.xlsx"
+
+# Download the file
+# Use the download.file function to download the file from the specified URL
+# - url: the URL of the file
+# - destfile: the destination file path where the downloaded file will be saved
+# - mode: the mode for file transfer; "wb" stands for "write binary", which is used for binary files
+download.file(babynames_url, destfile = "babynames_excel.xlsx", mode = "wb")
+
+# Read the downloaded file
+babynames <- read_xlsx("babynames_excel.xlsx")
+
+glimpse(babynames)
+```
+
+If we examine the data, we'll find it only has A names. That's because we read in, by default, the first sheet in the Excel file. If we want to read in a different sheet, we can specify the sheet name or number.
+
+```{r}
+babynamesa <- read_xlsx("babynames_excel.xlsx", sheet = "babynames_a")
+babynamesb <- read_xlsx("babynames_excel.xlsx", sheet = "babynames_b")
+
+```
+
+#### Loading data from a table on a website
+
+We can read in entire websites and tables on websites using using the `rvest` package. We're going to first read in the entire html page using the `read_html()` function.
+
+```{r}
+ts_url <- "https://en.wikipedia.org/wiki/List_of_Taylor_Swift_live_performances"
+
+ts_wiki <- read_html(ts_url)
+```
+
+Open it up in the environment window. It's the full HTML of the page. Next, we'll use `rvest` to extract the html table we want using `html_table().`
+
+```{r}
+# Reading the second table from the webpage
+taylor_live_tours <- read_html(ts_url) %>% 
+  html_table()
+taylor_live_tours <- taylor_live_tours[[2]]
+
+glimpse(taylor_live_tours)
+```
+
+## Read in IRE sessions through nested data
+
+```{r}
+sessions <- fromJSON("https://schedules.ire.org/ire-2024/ire-2024-schedule.json")
+str(sessions, max.level = 1) #we use max.level to limit the depth of the output since we have nested dataframes and lists inside the overall dataframe, a function of the JSON file
+```
+
+#### Cleaning the data
+
+We use `mutate()` to create new variables or change existing variables. We can change column types with a series of 'as' functions.
+
+R has many classes of vectors, including:
+
+-   logical (e.g., `TRUE`, `FALSE`)
+
+-   integer (e.g,, 2L, as.integer(3))
+
+-   numeric (real or decimal) (e.g, 2, 2.0, pi)
+
+-   complex (e.g, 1 + 0i, 1 + 4i)
+
+-   character (e.g, "a", "swc")
+
+-   date (e.g. `"02/21/92"`)
+
+-   list - A list of observations
+
+-   data frame - A dataframe is a . We will actually see entire data frames nested inside the overall sessions dataframe below.
+
+    -   `as.data.frame()` & `as_data_frame()` & `as_tibble()` and many other options for converting something to a dataframe.
+
+-   factors - A factor is a categorical description of a value. Sometimes the sorting of the category is important.
+
+    -   `as.factor()` will sort factors alphabetically
+
+    -   `as_factor()` will keep factors in the order they appear in the data
+
+    -   `fct_relevel()` will allow you to customize your sorting
+
+```{r echo=TRUE, fig.width=8, paged.print=FALSE}
+sessions <- sessions %>%
+  mutate(
+    track = as_factor(track),
+    session_type = as.factor(session_type), 
+    evergreen = as.logical(evergreen),
+    canceled = as.logical(canceled), 
+    recorded = as.logical(recorded),
+    day = fct_relevel(as_factor(day), "Thursday", "Friday", "Saturday", "Sunday"), # using fct_relevel to specify the order
+    start_time_utc = as.POSIXct(start_time, format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+    end_time_utc = as.POSIXct(end_time, format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+  )
+
+str(sessions,max.level=1) #checking to see if the changes were made
+
+```
+
+We see that the start time in the original data, and in the cleaned data, is in UTC. We can convert this to the local time zone of the conference, which is Pacific Time.
+
+```{r}
+sessions <- sessions %>%
+  mutate(
+    start_time_pt = with_tz(start_time_utc, tzone = "America/Los_Angeles"),
+    end_time_pt = with_tz(end_time_utc, tzone = "America/Los_Angeles")
+  )
+
+str(sessions,max.level=1)
+
+```
+
+now we know that start_time_pt is accurate, so let's remove the other times
+
+```{r}
+sessions <- sessions %>%
+  select(-start_time_utc, -end_time_utc,-start_time,-end_time) %>% 
+  rename(start_time = start_time_pt, end_time = end_time_pt) #renaming the columns to reflect the new time zone
+
+str(sessions,max.level=1)
+```
+
+Let's try to find the ideal sessions to attend tomorrow and Sunday.
+
+What might we want to filter?
+
+```{r echo=TRUE, fig.width=8, paged.print=FALSE}
+sessions %>% count(recorded) #counting the number of TRUE and FALSE values in the canceled column  
+not_recorded <- sessions %>% filter(recorded == "FALSE")
+
+future_not_recorded <- not_recorded %>% filter(day %in% c("Saturday", "Sunday")) #filtering for the future sessions that won't be recorded
+
+#Or if we want to find future not-recorded sessions in a programmatic way that will work at any point in time
+future_not_recorded <- not_recorded %>% filter(start_time > Sys.time())
+
+ideal_sessions <- future_not_recorded %>% filter(evergreen == FALSE & canceled == FALSE & !grepl("registration",session_type,ignore.case=TRUE) & (grepl("Edit",track,ignore.case=TRUE) | grepl("manag",track,ignore.case=TRUE) | grepl("writing",track,ignore.case=TRUE) | track=="" | grepl("elect",track,ignore.case=TRUE)))
+
+ideal_handson <- ideal_sessions %>% filter(session_type == "Hands-on")
+
+```
+
+## Finding tracks & types & speakers
+
+What else can we do with the data?
+
+We could try to quantify what tracks and session types appear the most.
+
+```{r}
+sessions %>%
+  count(track, sort = TRUE) #counting the number of sessions in each track 
+
+sessions %>% 
+  count(session_type, sort = TRUE) #counting the number of sessions in each type
+```
+
+what if you want to find specific speakers? They're in a list of 248 separate dataframes. Lets look at an example of the first speaker.
+
+```{r}
+str(sessions$speakers[[1]],max.level=1)
+```
+
+That's a whole dataframe for each and every speaker, each and every time they show up in the dataset. That's a lot. What can we do?
+
+Well, we can use the `bind_rows()` function from the `dplyr` package to combine all the speakers into one dataframe, or we can use the `unnest()` function from the `tidyr` package to expand the list-column into rows and columns.
+
+```{r}
+all_speakers1 <- bind_rows(sessions$speakers) #binding all the speakers into one dataframe
+
+glimpse(all_speakers1)
+```
+
+Lets try another approach: unnesting the speakers column
+
+```{r}
+all_speakers2 <- sessions %>%
+  unnest(cols = speakers) #unnesting the speakers column
+
+glimpse(all_speakers2)
+
+```
+
+Notice that now we have a dataframe with not just the speakers, but also all of the original data about the sessions. Let's limit this to what we want.
+
+```{r}
+all_speakers <- sessions %>%
+  select(session_id, session_title, speakers) %>%
+  unnest(cols=speakers) 
+
+glimpse(all_speakers)
+```
+
+We need to combine the first and last name now. There are several ways we can do that: we can use the `unite()` function from the `tidyr` package, or we can use the `paste()` function from base R, or we can use the `str_c()` function from the `stringr` package.
+
+The paste option will automatically add a space separator. paste0() will not add a separator. The unite option will add a separator of your choice.
+
+```{r}
+#paste option
+all_speakers1 <- all_speakers %>%
+  mutate(name = paste(first, last)) %>%
+  select(-first, -last) #combining the first and last name into one column
+
+#unite option 
+all_speakers2 <- all_speakers %>%
+  unite(name, first, last, sep = " ", remove = FALSE) #combining the first and last name into one column with a space between them.
+
+
+#lets just keep the paste option.
+all_speakers <- all_speakers1
+rm(all_speakers1,all_speakers2) #removing the other dataframes
+
+```
+
+now we can count the number of sessions each speaker is in
+
+```{r}
+all_speakers %>%
+  count(name, sort = TRUE) #counting the number of sessions each speaker is in
+
+```
+
+say we want to count how many speakers are only speaking once versus those speaking more than once
+
+```{r}
+all_speakers %>%
+  count(name) %>%
+  count(n) #counting the number of speakers who are speaking once versus those speaking more than once
+
+```
+
+How many sessions were canceled?
+
+```{r}
+sessions %>% 
+  group_by(canceled) %>% 
+  summarize(n=n()) %>% 
+  arrange(desc(n))
+```
+
+OK, one last thing: Let's pull all the tipsheets.
+
+```{r}
+glimpse(sessions$tipsheets)
+
+```
+
+Lets isolate tipsheets, but we want to make sure we keep the session ID and session title so we know which sessions they are connected to.
+
+```{r}
+tipsheets <- sessions %>%
+  select(session_id, session_title, tipsheets) %>%
+  unnest(cols = tipsheets) #unnesting the tipsheets column
+
+print(tipsheets)
+```
+
+One thing you'll notice in the tipsheets is that most sessions have no tipsheets, and those sessions aren't included in the new dataframe, and some sessions have more than one tipsheet, and those sessions are repeated.
